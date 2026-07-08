@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<title>So sánh dữ liệu chấm công tài xế</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+<style>
+  :root{
+    --bg:#f4f6f5;
+    --panel:#ffffff;
+    --ink:#1c2b28;
+    --muted:#5f6f6b;
+    --line:#dde5e2;
+    --accent:#0e7c5a;
+    --accent-dark:#0a5f45;
+    --bad:#f8d7d5;
+    --bad-ink:#9c2a22;
+    --missing1:#fde8c8;
+    --missing2:#d8e6fb;
+    --ok:#e5f4ec;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:"Segoe UI",Roboto,Arial,sans-serif;
+    padding:24px;
+  }
+  h1{
+    font-size:20px;
+    margin:0 0 4px 0;
+  }
+  .sub{
+    color:var(--muted);
+    font-size:13px;
+    margin-bottom:20px;
+  }
+  .panel{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:16px;
+    margin-bottom:16px;
+  }
+  .grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:16px;
+  }
+  label{
+    font-weight:600;
+    font-size:13px;
+    display:block;
+    margin-bottom:6px;
+  }
+  .hint{
+    font-size:12px;
+    color:var(--muted);
+    margin-bottom:8px;
+  }
+  textarea{
+    width:100%;
+    height:160px;
+    font-family:Consolas,monospace;
+    font-size:12px;
+    border:1px solid var(--line);
+    border-radius:6px;
+    padding:8px;
+    resize:vertical;
+  }
+  .btnrow{
+    margin-top:16px;
+    display:flex;
+    gap:10px;
+    align-items:center;
+  }
+  button{
+    background:var(--accent);
+    color:#fff;
+    border:none;
+    padding:10px 18px;
+    border-radius:6px;
+    font-size:14px;
+    font-weight:600;
+    cursor:pointer;
+  }
+  button:hover{ background:var(--accent-dark); }
+  button.secondary{
+    background:#fff;
+    color:var(--accent-dark);
+    border:1px solid var(--accent);
+  }
+  button:disabled{
+    background:#b9c4c0;
+    cursor:not-allowed;
+  }
+  #summary{
+    display:flex;
+    gap:12px;
+    flex-wrap:wrap;
+    margin:16px 0;
+  }
+  .stat{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:10px 16px;
+    font-size:13px;
+  }
+  .stat b{ font-size:18px; display:block; }
+  table{
+    border-collapse:collapse;
+    width:100%;
+    font-size:12.5px;
+    background:var(--panel);
+  }
+  th,td{
+    border:1px solid var(--line);
+    padding:6px 8px;
+    text-align:left;
+    white-space:nowrap;
+  }
+  th{
+    background:#eef3f1;
+    position:sticky;
+    top:0;
+  }
+  tr.row-missing1 td{ background:var(--missing1); }
+  tr.row-missing2 td{ background:var(--missing2); }
+  td.diff{ background:var(--bad); color:var(--bad-ink); font-weight:600; }
+  .tablewrap{
+    max-height:70vh;
+    overflow:auto;
+    border:1px solid var(--line);
+    border-radius:8px;
+  }
+  .legend{
+    display:flex;
+    gap:16px;
+    font-size:12px;
+    color:var(--muted);
+    margin-bottom:10px;
+    flex-wrap:wrap;
+  }
+  .legend span{ display:inline-flex; align-items:center; gap:6px; }
+  .swatch{ width:14px; height:14px; border-radius:3px; display:inline-block; border:1px solid var(--line); }
+</style>
+</head>
+<body>
+
+<h1>So sánh dữ liệu chấm công tài xế</h1>
+<div class="sub">Dán dữ liệu từ Google Sheet (File của bạn và File kế toán) để tự động so khớp theo Ngày + Mã tuyến, tô đỏ ô bị lệch, và xuất ra Excel.</div>
+
+<div class="panel">
+  <div class="hint">
+    <b>Cách lấy dữ liệu:</b> Mở Google Sheet → bôi đen vùng gồm cả dòng tiêu đề và các cột <b>Ngày, Biển số xe, Tải trọng, Tài xế, Số điện thoại, Mã tuyến</b> → Ctrl+C → dán vào ô bên dưới (Ctrl+V). Không cần đúng thứ tự cột, tool sẽ tự nhận diện theo tên cột.
+  </div>
+  <div class="grid">
+    <div>
+      <label>File 1 — Dữ liệu của bạn</label>
+      <textarea id="data1" placeholder="Dán dữ liệu (kèm dòng tiêu đề) vào đây..."></textarea>
+    </div>
+    <div>
+      <label>File 2 — Dữ liệu kế toán</label>
+      <textarea id="data2" placeholder="Dán dữ liệu (kèm dòng tiêu đề) vào đây..."></textarea>
+    </div>
+  </div>
+  <div class="btnrow">
+    <button id="compareBtn">So sánh dữ liệu</button>
+    <button id="exportBtn" class="secondary" disabled>Xuất file Excel</button>
+    <span id="status" style="font-size:13px;color:var(--muted);"></span>
+  </div>
+</div>
+
+<div id="resultArea" style="display:none;">
+  <div id="summary"></div>
+  <div class="legend">
+    <span><span class="swatch" style="background:var(--bad);"></span> Ô dữ liệu bị lệch</span>
+    <span><span class="swatch" style="background:var(--missing1);"></span> Chỉ có ở File 1 (thiếu bên kế toán)</span>
+    <span><span class="swatch" style="background:var(--missing2);"></span> Chỉ có ở File 2 (thiếu bên bạn)</span>
+  </div>
+  <div class="tablewrap">
+    <table id="resultTable"></table>
+  </div>
+</div>
+
+<script>
+const FIELD_DEFS = [
+  {key:'ngay',    label:'Ngày',        test:h => h.includes('NGÀY')},
+  {key:'bienso',  label:'Biển số xe',  test:h => h.includes('BIỂN')},
+  {key:'taitrong',label:'Tải trọng',   test:h => h.includes('TẢI')},
+  {key:'sdt',     label:'SĐT',         test:h => h.includes('ĐIỆN THOẠI') || h.includes('SĐT')},
+  {key:'matuyen', label:'Mã tuyến',    test:h => h.includes('TUYẾN')},
+  {key:'taixe',   label:'Tài xế',      test:h => h.includes('TÀI XẾ') || h.includes('TÀI ')},
+];
+
+function norm(s){
+  return (s || '')
+    .normalize('NFC')
+    .replace(/\u00A0/g, ' ')   // non-breaking space -> space thường
+    .replace(/\uFEFF/g, '')    // bỏ BOM ẩn nếu có
+    .trim();
+}
+
+function mapHeader(cells){
+  const headerCells = cells.map(h => norm(h).toUpperCase());
+  const colMap = {};
+  headerCells.forEach((h, idx) => {
+    for(const def of FIELD_DEFS){
+      if(colMap[def.key] === undefined && def.test(h)){
+        colMap[def.key] = idx;
+        break;
+      }
+    }
+  });
+  return colMap;
+}
+
+function parseTSV(text){
+  const lines = text.replace(/\r/g,'').split('\n').filter(l => l.trim() !== '');
+  if(lines.length < 2) return {rows:[], missingFields:[], headerLine:-1};
+
+  // Tự dò dòng tiêu đề trong 5 dòng đầu (phòng trường hợp dán dư dòng trống/dòng lạ phía trên)
+  let bestIdx = 0, bestScore = -1, bestMap = {};
+  for(let i=0; i<Math.min(5, lines.length); i++){
+    const cells = lines[i].split('\t');
+    const map = mapHeader(cells);
+    const score = Object.keys(map).length;
+    if(score > bestScore){ bestScore = score; bestIdx = i; bestMap = map; }
+  }
+
+  const colMap = bestMap;
+  const missingFields = FIELD_DEFS.filter(d => colMap[d.key] === undefined).map(d => d.label);
+  const rows = [];
+  for(let i=bestIdx+1;i<lines.length;i++){
+    const cells = lines[i].split('\t');
+    const row = {};
+    FIELD_DEFS.forEach(def => {
+      const idx = colMap[def.key];
+      row[def.key] = idx !== undefined ? norm(cells[idx]) : '';
+    });
+    if(Object.values(row).every(v => v === '')) continue;
+    rows.push(row);
+  }
+  return {rows, missingFields, headerLine:bestIdx};
+}
+
+function buildKey(row, counter){
+  const base = (row.ngay || '?') + '||' + (row.matuyen || '?');
+  const n = (counter[base] || 0) + 1;
+  counter[base] = n;
+  return base + '||' + n; // handles duplicate route+date within same file, matched in order
+}
+
+function compareData(rows1, rows2){
+  const c1 = {}, c2 = {};
+  const map1 = {}, map2 = {};
+  rows1.forEach(r => { const k = buildKey(r, c1); map1[k] = r; });
+  rows2.forEach(r => { const k = buildKey(r, c2); map2[k] = r; });
+
+  const allKeys = Array.from(new Set([...Object.keys(map1), ...Object.keys(map2)]));
+  // sort by ngay then matuyen for readability
+  allKeys.sort((a,b) => a.localeCompare(b, 'vi'));
+
+  const compareFields = ['bienso','taitrong','taixe','sdt'];
+  const results = [];
+  let matchCount=0, mismatchCount=0, only1=0, only2=0;
+
+  allKeys.forEach(k => {
+    const r1 = map1[k], r2 = map2[k];
+    if(r1 && !r2){
+      results.push({type:'missing2', r1, r2:null});
+      only1++;
+    } else if(!r1 && r2){
+      results.push({type:'missing1', r1:null, r2});
+      only2++;
+    } else {
+      const diffs = {};
+      let hasDiff = false;
+      compareFields.forEach(f => {
+        if((r1[f]||'') !== (r2[f]||'')){ diffs[f] = true; hasDiff = true; }
+      });
+      results.push({type: hasDiff ? 'mismatch' : 'match', r1, r2, diffs});
+      if(hasDiff) mismatchCount++; else matchCount++;
+    }
+  });
+
+  return {results, matchCount, mismatchCount, only1, only2};
+}
+
+let lastResults = null;
+
+document.getElementById('compareBtn').addEventListener('click', () => {
+  const t1 = document.getElementById('data1').value;
+  const t2 = document.getElementById('data2').value;
+  const statusEl = document.getElementById('status');
+
+  if(!t1.trim() || !t2.trim()){
+    statusEl.textContent = 'Vui lòng dán dữ liệu vào cả 2 ô.';
+    return;
+  }
+  const p1 = parseTSV(t1);
+  const p2 = parseTSV(t2);
+
+  if(p1.rows.length === 0 || p2.rows.length === 0){
+    statusEl.textContent = 'Không đọc được dữ liệu. Kiểm tra lại đã dán đúng gồm dòng tiêu đề chưa.';
+    return;
+  }
+
+  const missing1 = p1.missingFields;
+  const missing2 = p2.missingFields;
+  if(missing1.length > 0 || missing2.length > 0){
+    let msg = '';
+    if(missing1.length) msg += 'File 1 thiếu cột: ' + missing1.join(', ') + '. ';
+    if(missing2.length) msg += 'File 2 thiếu cột: ' + missing2.join(', ') + '.';
+    statusEl.textContent = msg + ' (Dòng tiêu đề nhận ở dòng ' + (p1.headerLine+1) + ' / ' + (p2.headerLine+1) + ')';
+  } else {
+    statusEl.textContent = '';
+  }
+
+  const cmp = compareData(p1.rows, p2.rows);
+  lastResults = cmp;
+  renderResults(cmp);
+  document.getElementById('exportBtn').disabled = false;
+});
+
+function renderResults(cmp){
+  const area = document.getElementById('resultArea');
+  area.style.display = 'block';
+
+  const summary = document.getElementById('summary');
+  summary.innerHTML = `
+    <div class="stat"><b>${cmp.matchCount}</b>Khớp hoàn toàn</div>
+    <div class="stat" style="color:#9c2a22;"><b>${cmp.mismatchCount}</b>Có dữ liệu lệch</div>
+    <div class="stat"><b>${cmp.only1}</b>Chỉ có ở File 1</div>
+    <div class="stat"><b>${cmp.only2}</b>Chỉ có ở File 2</div>
+  `;
+
+  const table = document.getElementById('resultTable');
+  const headers = ['Ngày','Mã tuyến','Biển số (F1)','Biển số (F2)','Tải trọng (F1)','Tải trọng (F2)','Tài xế (F1)','Tài xế (F2)','SĐT (F1)','SĐT (F2)','Trạng thái'];
+  let html = '<thead><tr>' + headers.map(h=>`<th>${h}</th>`).join('') + '</tr></thead><tbody>';
+
+  cmp.results.forEach(res => {
+    let rowClass = '';
+    let status = '';
+    const r1 = res.r1 || {}, r2 = res.r2 || {};
+    const d = res.diffs || {};
+
+    if(res.type === 'missing1'){ rowClass = 'row-missing1'; status = 'Chỉ có ở File 2'; }
+    else if(res.type === 'missing2'){ rowClass = 'row-missing2'; status = 'Chỉ có ở File 1'; }
+    else if(res.type === 'mismatch'){ status = 'LỆCH DỮ LIỆU'; }
+    else { status = 'Khớp'; }
+
+    const cell = (val, isDiff) => `<td class="${isDiff ? 'diff' : ''}">${val || ''}</td>`;
+
+    html += `<tr class="${rowClass}">`;
+    html += `<td>${r1.ngay || r2.ngay || ''}</td>`;
+    html += `<td>${r1.matuyen || r2.matuyen || ''}</td>`;
+    html += cell(r1.bienso, d.bienso) + cell(r2.bienso, d.bienso);
+    html += cell(r1.taitrong, d.taitrong) + cell(r2.taitrong, d.taitrong);
+    html += cell(r1.taixe, d.taixe) + cell(r2.taixe, d.taixe);
+    html += cell(r1.sdt, d.sdt) + cell(r2.sdt, d.sdt);
+    html += `<td>${status}</td>`;
+    html += '</tr>';
+  });
+  html += '</tbody>';
+  table.innerHTML = html;
+}
+
+document.getElementById('exportBtn').addEventListener('click', async () => {
+  if(!lastResults) return;
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('So sánh');
+
+  const headers = ['Ngày','Mã tuyến','Biển số (F1)','Biển số (F2)','Tải trọng (F1)','Tải trọng (F2)','Tài xế (F1)','Tài xế (F2)','SĐT (F1)','SĐT (F2)','Trạng thái'];
+  ws.addRow(headers);
+  ws.getRow(1).font = { bold:true };
+  ws.getRow(1).eachCell(c => { c.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFEEF3F1'} }; });
+
+  const RED = 'FFF8D7D5';
+  const ORANGE = 'FFFDE8C8';
+  const BLUE = 'FFD8E6FB';
+
+  lastResults.results.forEach(res => {
+    const r1 = res.r1 || {}, r2 = res.r2 || {};
+    const d = res.diffs || {};
+    const row = ws.addRow([
+      r1.ngay || r2.ngay || '',
+      r1.matuyen || r2.matuyen || '',
+      r1.bienso||'', r2.bienso||'',
+      r1.taitrong||'', r2.taitrong||'',
+      r1.taixe||'', r2.taixe||'',
+      r1.sdt||'', r2.sdt||'',
+      res.type === 'missing1' ? 'Chỉ có ở File 2' :
+        res.type === 'missing2' ? 'Chỉ có ở File 1' :
+        res.type === 'mismatch' ? 'LỆCH DỮ LIỆU' : 'Khớp'
+    ]);
+
+    if(res.type === 'missing1' || res.type === 'missing2'){
+      const color = res.type === 'missing1' ? ORANGE : BLUE;
+      row.eachCell(c => { c.fill = { type:'pattern', pattern:'solid', fgColor:{argb:color} }; });
+    } else if(d.bienso) [3,4].forEach(i => row.getCell(i).fill = {type:'pattern',pattern:'solid',fgColor:{argb:RED}});
+    if(d.taitrong) [5,6].forEach(i => row.getCell(i).fill = {type:'pattern',pattern:'solid',fgColor:{argb:RED}});
+    if(d.taixe) [7,8].forEach(i => row.getCell(i).fill = {type:'pattern',pattern:'solid',fgColor:{argb:RED}});
+    if(d.sdt) [9,10].forEach(i => row.getCell(i).fill = {type:'pattern',pattern:'solid',fgColor:{argb:RED}});
+  });
+
+  ws.columns.forEach(col => { col.width = 16; });
+  ws.getColumn(11).width = 18;
+
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], {type:'application/octet-stream'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'so-sanh-cham-cong.xlsx';
+  a.click();
+  URL.revokeObjectURL(url);
+});
+</script>
+</body>
+</html>
